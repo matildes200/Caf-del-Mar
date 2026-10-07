@@ -42,7 +42,11 @@
 *, *::before, *::after { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
 html:not(.lenis) { scroll-behavior: smooth; }
+/* Text is not selectable and pinch-zoom is off, by request.
+   Form fields stay selectable so people can edit what they type. */
 body {
+  -webkit-user-select: none; user-select: none;
+  touch-action: pan-x pan-y;
   margin: 0;
   font-family: var(--f-sans);
   font-size: clamp(15px, 1.02vw, 16.5px);
@@ -53,7 +57,8 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
-img, video { display: block; max-width: 100%; }
+input, select, textarea { -webkit-user-select: text; user-select: text; }
+img, video { display: block; max-width: 100%; -webkit-user-drag: none; }
 img { -webkit-user-drag: none; }
 svg { display: block; width: 1em; height: 1em; flex-shrink: 0; }
 a { color: inherit; text-decoration: none; }
@@ -316,7 +321,7 @@ html.nav-open .nav__foot { opacity: 1; }
 /* ==========================================================================
    HOME · Hero
    ========================================================================== */
-.hero { position: relative; height: 100vh; height: 100svh; min-height: 640px; overflow: hidden; background: var(--teal); }
+.hero { position: relative; height: 88vh; height: 88svh; min-height: 560px; overflow: hidden; background: var(--teal); }
 .hero__media { z-index: 0; }
 .hero__media > img { object-position: center 30%; }
 .hero__tint { position: absolute; inset: 0; z-index: 1; background: linear-gradient(180deg, rgba(10, 30, 34, 0.45) 0%, rgba(10, 30, 34, 0.05) 35%, rgba(10, 30, 34, 0.1) 70%, rgba(10, 30, 34, 0.25) 100%); }
@@ -327,9 +332,9 @@ html.nav-open .nav__foot { opacity: 1; }
   translate: -50% 0;
   display: grid; place-items: center;
 }
-.hero__arc { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; color: #fff; }
+.hero__arc { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; color: #fff; filter: drop-shadow(0 2px 12px rgba(8, 26, 30, 0.55)); }
 .hero__arc text {
-  font-family: var(--f-display); font-size: 52px; letter-spacing: 2px;
+  font-family: var(--f-display); font-size: 47px; letter-spacing: 1px;
   fill: currentColor; text-transform: uppercase;
   paint-order: stroke; stroke: rgba(10, 30, 34, 0.18); stroke-width: 3px;
 }
@@ -344,11 +349,11 @@ html.nav-open .nav__foot { opacity: 1; }
 
 @media (max-width: 1024px) {
   .hero__plate { width: min(86vw, 74vh); bottom: -16vh; }
-  .hero__arc text { font-size: 52px; letter-spacing: 1px; }
+  .hero__arc text { font-size: 47px; letter-spacing: 1px; }
 }
 @media (max-width: 760px) {
   .hero__plate { width: 104vw; bottom: -12vh; }
-  .hero__arc text { font-size: 60px; }
+  .hero__arc text { font-size: 54px; }
   .hero__status { display: none; }
 }
 
@@ -392,8 +397,8 @@ html.nav-open .nav__foot { opacity: 1; }
   .journey.is-pinned .journey__polaroid { left: auto !important; right: 5% !important; top: 11% !important; bottom: auto !important; }
 
   .journey.is-pinned .is-secondary { display: none !important; }
-  .journey.is-pinned .plate { width: 118vw; margin-inline: -9vw; }
-  .journey.is-pinned .plate__content { inset: 24% 26%; }
+  .journey.is-pinned .plate { width: 94vw; margin-inline: 0; }
+  .journey.is-pinned .plate__content { inset: 23% 20%; }
   .journey.is-pinned .plate__step p { font-size: 12px; }
   .journey.is-pinned .journey__polaroid { width: 34vw; }
 

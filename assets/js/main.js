@@ -13,6 +13,12 @@
   const pad = (n) => String(n).padStart(2, '0');
   const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
+  /* Where the reservation form posts to. FormSubmit relays it straight to the
+     restaurant's inbox with no mail app involved and no account to create; the
+     first submission triggers a one-time confirmation email that must be opened.
+     To switch provider (Formspree, Web3Forms, your own endpoint), change this line. */
+  const BOOKING_ENDPOINT = 'https://formsubmit.co/ajax/geral@coconutsluanda.com';
+
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const canHover = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
   const { gsap, ScrollTrigger } = window;
@@ -245,6 +251,34 @@
       track.scrollTo({ left: Math.round(track.scrollLeft / s) * s, behavior: 'smooth' });
     });
     track.addEventListener('click', (e) => { if (moved) { e.preventDefault(); e.stopPropagation(); moved = false; } }, true);
+  }
+
+  /* Zoom and copying are switched off site-wide, by request.
+     Form fields are left alone so people can still edit what they type. */
+  function setupLockdown() {
+    const inField = (el) => el && el.closest('input, textarea, select, [contenteditable="true"]');
+
+    document.addEventListener('copy', (e) => { if (!inField(e.target)) e.preventDefault(); });
+    document.addEventListener('cut', (e) => { if (!inField(e.target)) e.preventDefault(); });
+    document.addEventListener('contextmenu', (e) => { if (!inField(e.target)) e.preventDefault(); });
+    document.addEventListener('dragstart', (e) => { if (e.target.tagName === 'IMG') e.preventDefault(); });
+
+    // Desktop: ctrl/cmd + wheel, and ctrl/cmd + plus/minus/zero
+    window.addEventListener('wheel', (e) => { if (e.ctrlKey || e.metaKey) e.preventDefault(); }, { passive: false });
+    window.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && ['+', '=', '-', '_', '0'].includes(e.key)) e.preventDefault();
+    });
+    // Touch: pinch gestures (Safari) and double-tap zoom
+    ['gesturestart', 'gesturechange', 'gestureend'].forEach((evt) => {
+      document.addEventListener(evt, (e) => e.preventDefault());
+    });
+    document.addEventListener('touchmove', (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+    let lastTap = 0;
+    document.addEventListener('touchend', (e) => {
+      const now = Date.now();
+      if (now - lastTap < 320 && !inField(e.target)) e.preventDefault();
+      lastTap = now;
+    }, { passive: false });
   }
 
   /* Thin sunset line across the top showing how far down the page you are */
@@ -704,17 +738,43 @@
     $$('[data-next-step]', form).forEach((b) => b.addEventListener('click', () => { if (validate(steps[current])) go(current + 1); }));
     $$('[data-prev-step]', form).forEach((b) => b.addEventListener('click', () => go(current - 1)));
 
-    form.addEventListener('submit', (e) => {
+    form.addEventListener('submit', async (e) => {
       e.preventDefault();
+      const note = $('[data-booking-note]');
+      const submitBtn = $('button[type="submit"]', form);
       const d = data();
-      const subject = `Pedido de reserva: ${d.motivo}, ${prettyDate(d.data)} às ${d.hora}`;
-      const body = [
-        `Nome: ${d.nome}`, `Telefone: ${d.telefone}`, `Email: ${d.email || 'Não indicado'}`,
-        `Data: ${prettyDate(d.data)}`, `Hora: ${d.hora}`, `Pessoas: ${d.pessoas}`, `Motivo: ${d.motivo}`,
-        '', d.mensagem || '',
-      ].join('\n');
-      window.location.href = `mailto:geral@coconutsluanda.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-      $('[data-booking-note]').textContent = 'A abrir o seu email com o pedido pronto a enviar. Respondemos em até 24 horas.';
+
+      const payload = {
+        _subject: `Pedido de reserva: ${d.motivo}, ${prettyDate(d.data)} às ${d.hora}`,
+        Nome: d.nome,
+        Telefone: d.telefone,
+        Email: d.email || 'Não indicado',
+        Data: prettyDate(d.data),
+        Hora: d.hora,
+        Pessoas: d.pessoas,
+        Motivo: d.motivo,
+        Mensagem: d.mensagem || '',
+        _template: 'table',
+        _captcha: 'false',
+      };
+
+      submitBtn.disabled = true;
+      note.textContent = 'A enviar o seu pedido…';
+      try {
+        const res = await fetch(BOOKING_ENDPOINT, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        form.reset();
+        go(0);
+        note.textContent = 'Pedido enviado. Respondemos em até 24 horas.';
+      } catch {
+        note.innerHTML = 'Não foi possível enviar o pedido. Ligue-nos para <a href="tel:+244923581333" style="text-decoration:underline">+244 923 581 333</a> ou escreva para <a href="mailto:geral@coconutsluanda.com" style="text-decoration:underline">geral@coconutsluanda.com</a>.';
+      } finally {
+        submitBtn.disabled = false;
+      }
     });
 
     go(0);
@@ -815,6 +875,7 @@
     const num = $('[data-plate-num]', section);
     const fill = $('[data-plate-fill]', section);
     const polaroids = $$('.journey__polaroid', section);
+    const LEAD = 0.3;
 
     gsap.set(steps, { autoAlpha: 0, y: 24 });
     gsap.set('.plate__counter', { autoAlpha: 0 });
@@ -823,39 +884,38 @@
     const tl = gsap.timeline({
       defaults: { ease: 'power2.inOut' },
       scrollTrigger: {
-        trigger: section, start: 'top top', end: () => `+=${window.innerHeight * (n * 0.62 + 0.5)}`,
+        trigger: section, start: 'top top', end: () => `+=${window.innerHeight * (n * 0.62)}`,
         pin: true, scrub: 0.45, anticipatePin: 1, invalidateOnRefresh: true,
         onUpdate: (self) => {
-          const t = self.progress * (n + 1.4);
-          const i = clamp(Math.floor(t - 1), 0, n - 1);
+          const i = clamp(Math.floor(self.progress * tl.duration() - LEAD), 0, n - 1);
           num.textContent = pad(i + 1);
           fill.style.transform = `scaleX(${(i + 1) / n})`;
         },
       },
     });
 
-    // Plate glides up into place and keeps turning slowly through every step
-    tl.fromTo(plate, { y: () => window.innerHeight * 0.75 }, { y: 0, duration: 1, ease: 'power3.out' }, 0);
-    tl.fromTo(svg, { rotation: -70 }, { rotation: 0, duration: 1, ease: 'power3.out' }, 0);
-    tl.to(svg, { rotation: 300, duration: n, ease: 'none' }, 1);
-    tl.to('.plate__counter', { autoAlpha: 1, duration: 0.3 }, 0.8);
+    // Short lead-in: the plate is already on screen when the section pins, so the
+    // first thing you see is the plate and its first step, not an empty white frame.
+    tl.fromTo(plate, { y: () => window.innerHeight * 0.18 }, { y: 0, duration: LEAD, ease: 'power3.out' }, 0);
+    tl.fromTo(svg, { rotation: -24 }, { rotation: 0, duration: LEAD, ease: 'power3.out' }, 0);
+    tl.to(svg, { rotation: 300, duration: n, ease: 'none' }, LEAD);
+    tl.to('.plate__counter', { autoAlpha: 1, duration: 0.2 }, 0);
 
     steps.forEach((step, i) => {
-      const at = 1 + i;
-      tl.to(step, { autoAlpha: 1, y: 0, duration: 0.35 }, i === 0 ? 0.75 : at);
-      if (i < n - 1) tl.to(step, { autoAlpha: 0, y: -24, duration: 0.3 }, at + 0.72);
+      const at = LEAD + i;
+      tl.to(step, { autoAlpha: 1, y: 0, duration: 0.3 }, i === 0 ? 0 : at);
+      if (i < n - 1) tl.to(step, { autoAlpha: 0, y: -24, duration: 0.28 }, at + 0.72);
     });
 
     polaroids.forEach((p) => {
       const i = Number(p.dataset.step);
-      const at = i === 0 ? 0.7 : 1 + i - 0.05;
+      const at = i === 0 ? 0 : LEAD + i - 0.05;
       const dir = p.dataset.from === 'right' ? 1 : -1;
-      tl.fromTo(p, { autoAlpha: 0, x: dir * 160, y: 120, rotation: dir * 14 }, { autoAlpha: 1, x: 0, y: 0, rotation: 0, duration: 0.5, ease: 'power3.out' }, at);
-      if (i < n - 1) tl.to(p, { autoAlpha: 0, x: dir * -80, y: -160, rotation: dir * -8, duration: 0.4, ease: 'power2.in' }, 1 + i + 0.7);
+      tl.fromTo(p, { autoAlpha: 0, x: dir * 160, y: 120, rotation: dir * 14 }, { autoAlpha: 1, x: 0, y: 0, rotation: 0, duration: 0.45, ease: 'power3.out' }, at);
+      if (i < n - 1) tl.to(p, { autoAlpha: 0, x: dir * -80, y: -160, rotation: dir * -8, duration: 0.38, ease: 'power2.in' }, LEAD + i + 0.7);
     });
 
-
-    tl.to({}, { duration: 0.4 });
+    tl.to({}, { duration: 0.3 });
   }
 
   /* HOME · Atmosphere band */
@@ -1054,6 +1114,7 @@
   $$('[data-track-scope]').forEach(setupTrack);
   setupCardImages();
   setupProgressBar();
+  setupLockdown();
   setupDaysStatic();
   setupAgenda();
   setupDayNightToggle();
